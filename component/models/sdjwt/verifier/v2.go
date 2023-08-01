@@ -38,7 +38,7 @@ func parseV2(
 
 	// Process the Disclosures.
 	// Section: https://www.ietf.org/archive/id/draft-ietf-oauth-selective-disclosure-jwt-02.html#section-6.2-4.5.1
-	return getDisclosedClaims(cfp.Disclosures, signedJWT, common.SDJWTVersionV2)
+	return getDisclosedClaims(cfp.Disclosures, signedJWT)
 }
 
 func verifyHolderBinding(sdJWT *afgjwt.JSONWebToken, holderBinding string, pOpts *parseOpts) error {

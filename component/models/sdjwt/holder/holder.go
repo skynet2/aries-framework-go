@@ -110,7 +110,7 @@ func Parse(combinedFormatForIssuance string, opts ...ParseOpt) ([]*Claim, error)
 		}
 	}
 
-	err = common.VerifyDisclosuresInSDJWT(cfi.Disclosures, signedJWT, sdJWTVersion)
+	err = common.VerifyDisclosuresInSDJWT(cfi.Disclosures, signedJWT)
 	if err != nil {
 		return nil, err
 	}
