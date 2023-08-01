@@ -146,6 +146,7 @@ func isDigestInDisclosures(disclosuresClaims []*DisclosureClaim, digest string) 
 		if parsedDisclosure.Type != DisclosureClaimTypeObject {
 			continue
 		}
+
 		found, err := isDigestInClaims(digest, parsedDisclosure.Value.(map[string]interface{}))
 		if err != nil {
 			return false

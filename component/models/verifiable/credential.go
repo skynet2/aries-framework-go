@@ -1072,7 +1072,7 @@ func newCredential(raw *rawCredential) (*Credential, error) {
 		return nil, fmt.Errorf("fill credential subject from raw: %w", err)
 	}
 
-	disclosures, err := parseDisclosures(raw.SDJWTDisclosures, raw.SDJWTVersion)
+	disclosures, err := parseDisclosures(raw.SDJWTDisclosures)
 	if err != nil {
 		return nil, fmt.Errorf("fill credential sdjwt disclosures from raw: %w", err)
 	}
@@ -1122,7 +1122,7 @@ func parseTypedID(data json.RawMessage) ([]TypedID, error) {
 	return nil, err
 }
 
-func parseDisclosures(disclosures []string, version common.SDJWTVersion) ([]*common.DisclosureClaim, error) {
+func parseDisclosures(disclosures []string) ([]*common.DisclosureClaim, error) {
 	if len(disclosures) == 0 {
 		return nil, nil
 	}
