@@ -370,16 +370,38 @@ func GetCNF(claims map[string]interface{}) (map[string]interface{}, error) {
 	return cnf, nil
 }
 
-// GetDisclosureDigests returns digests from claims map.
+// GetDisclosureDigests returns digests from claims map considering
+// either SDKey and array elements that are objects with one key, that key being ... and referring to a string.
 func GetDisclosureDigests(claims map[string]interface{}) (map[string]bool, error) {
-	disclosuresObj, ok := claims[SDKey]
-	if !ok {
-		return nil, nil
+	var (
+		disclosures []string
+		err         error
+	)
+
+	disclosuresObj, exist := claims[SDKey]
+	if exist {
+		disclosures, err = stringArray(disclosuresObj)
+		if err != nil {
+			return nil, fmt.Errorf("get disclosure digests: %w", err)
+		}
 	}
 
-	disclosures, err := stringArray(disclosuresObj)
-	if err != nil {
-		return nil, fmt.Errorf("get disclosure digests: %w", err)
+	for _, v := range claims {
+		switch t := v.(type) {
+		case []interface{}:
+			for _, vv := range t {
+				valueMapped, ok := vv.(map[string]interface{})
+				if !ok {
+					continue
+				}
+
+				if digestInterface, ok := valueMapped["..."]; ok {
+					if digest, ok := digestInterface.(string); ok {
+						disclosures = append(disclosures, digest)
+					}
+				}
+			}
+		}
 	}
 
 	return SliceToMap(disclosures), nil

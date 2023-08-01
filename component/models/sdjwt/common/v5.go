@@ -8,7 +8,6 @@ package common
 
 import (
 	"fmt"
-
 	afgjwt "github.com/hyperledger/aries-framework-go/component/models/jwt"
 	utils "github.com/hyperledger/aries-framework-go/component/models/util/maphelpers"
 )
@@ -31,6 +30,8 @@ func (c *commonV5) VerifyDisclosuresInSDJWT(disclosures []string, signedJWT *afg
 		return err
 	}
 
+	var disclosuresClaims []*DisclosureClaim
+
 	for _, disclosure := range disclosures {
 		digest, err := GetHash(cryptoHash, disclosure)
 		if err != nil {
@@ -42,19 +43,42 @@ func (c *commonV5) VerifyDisclosuresInSDJWT(disclosures []string, signedJWT *afg
 			return err
 		}
 
-		if !found {
-			parsed, err := getDisclosureClaim(disclosure)
-			if err != nil {
-				return err
-			}
-
-			if parsed.Type == DisclosureClaimTypeArrayElement {
-				continue
-			}
-
-			return fmt.Errorf("disclosure digest '%s' not found in SD-JWT disclosure digests", digest)
+		if found {
+			continue
 		}
+
+		if disclosuresClaims == nil {
+			disclosuresClaims, err = GetDisclosureClaims(disclosures)
+			if err != nil {
+				return fmt.Errorf("getDisclosureClaims: %w", err)
+			}
+		}
+
+		// Check if given digest contains in nested disclosures
+		if found = isDigestInDisclosures(disclosuresClaims, digest); found {
+			continue
+		}
+
+		return fmt.Errorf("disclosure digest '%s' not found in SD-JWT disclosure digests", digest)
 	}
 
 	return nil
+}
+
+func isDigestInDisclosures(disclosuresClaims []*DisclosureClaim, digest string) bool {
+	for _, parsedDisclosure := range disclosuresClaims {
+		if parsedDisclosure.Type != DisclosureClaimTypeObject {
+			continue
+		}
+		found, err := isDigestInClaims(digest, parsedDisclosure.Value.(map[string]interface{}))
+		if err != nil {
+			return false
+		}
+
+		if found {
+			return true
+		}
+	}
+
+	return false
 }

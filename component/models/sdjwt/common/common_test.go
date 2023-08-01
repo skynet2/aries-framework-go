@@ -151,6 +151,17 @@ func TestVerifyDisclosuresInSDJWT(t *testing.T) {
 		r.NoError(err)
 	})
 
+	t.Run("success SDJWT V5", func(t *testing.T) {
+		sdJWT := ParseCombinedFormatForIssuance(testCombinedFormatForIssuanceV5)
+		require.Equal(t, 6, len(sdJWT.Disclosures))
+
+		signedJWT, _, err := afjwt.Parse(sdJWT.SDJWT, afjwt.WithSignatureVerifier(&NoopSignatureVerifier{}))
+		require.NoError(t, err)
+
+		err = VerifyDisclosuresInSDJWT(sdJWT.Disclosures, signedJWT, SDJWTVersionV5)
+		r.NoError(err)
+	})
+
 	t.Run("success - complex struct(spec example 2b)", func(t *testing.T) {
 		specExample2bPresentation := fmt.Sprintf("%s%s", specExample2bJWT, specExample2bDisclosures)
 
