@@ -385,6 +385,43 @@ func TestNew(t *testing.T) {
 		}
 	})
 
+	t.Run("Create SD-JWS V5 with structured claims, recursive SD and SD array elements", func(t *testing.T) {
+		r := require.New(t)
+
+		complexClaims := createComplexClaimsWithSlice()
+
+		pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+		r.NoError(err)
+
+		verifier, e := afjwt.NewEd25519Verifier(pubKey)
+		r.NoError(e)
+
+		token, err := New(issuer, complexClaims, nil, afjwt.NewEd25519Signer(privKey),
+			WithSDJWTVersion(common.SDJWTVersionV5),
+			WithStructuredClaims(true),
+			WithAlwaysIncludeObjects([]string{"address.countryCodes", "address.extra"}),
+			WithNonSelectivelyDisclosableClaims([]string{"address.cities[1]", "address.region"}),
+			WithRecursiveClaimsObjects([]string{"address.extra.recursive"}),
+		)
+		r.NoError(err)
+		combinedFormatForIssuance, err := token.Serialize(false)
+		r.NoError(err)
+
+		cfi := common.ParseCombinedFormatForIssuance(combinedFormatForIssuance)
+		r.Equal(6, len(cfi.Disclosures))
+
+		afjwtToken, _, err := afjwt.Parse(cfi.SDJWT, afjwt.WithSignatureVerifier(verifier))
+		r.NoError(err)
+
+		var parsedClaims map[string]interface{}
+		err = afjwtToken.DecodeClaims(&parsedClaims)
+		r.NoError(err)
+
+		digests, err := common.GetDisclosureDigests(parsedClaims)
+		require.NoError(t, err)
+		require.Nil(t, digests)
+	})
+
 	t.Run("Create JWS with holder public key", func(t *testing.T) {
 		r := require.New(t)
 
@@ -598,7 +635,7 @@ func TestNewFromVC(t *testing.T) {
 		token, err := NewFromVC(vc, nil, signer,
 			WithHolderPublicKey(holderPublicJWK),
 			WithStructuredClaims(true),
-			WithNonSelectivelyDisclosableClaims([]string{"id", "degree.type"}),
+			WithNonSelectivelyDisclosableClaims([]string{"id", "degree.type", "degree.country[1]"}),
 			WithSDJWTVersion(common.SDJWTVersionV5))
 		r.NoError(err)
 
@@ -620,6 +657,21 @@ func TestNewFromVC(t *testing.T) {
 		degreeType, err := jsonpath.Get("$.credentialSubject.degree.type", vcWithSelectedDisclosures)
 		r.NoError(err)
 		r.Equal("BachelorDegree", degreeType)
+
+		degreeCountries, err := jsonpath.Get("$.credentialSubject.degree.country", vcWithSelectedDisclosures)
+		r.NoError(err)
+		degreeCountriesList, ok := degreeCountries.([]interface{})
+		r.True(ok)
+		r.Len(degreeCountries, 2)
+		degreeCountriesListMapped, ok := degreeCountriesList[0].(map[string]interface{})
+		r.True(ok)
+
+		_, ok = degreeCountriesListMapped["..."]
+		r.True(ok)
+
+		degreeCountriesListValue, ok := degreeCountriesList[1].(string)
+		r.True(ok)
+		r.Equal("PL", degreeCountriesListValue)
 
 		degreeID, err := jsonpath.Get("$.credentialSubject.degree.id", vcWithSelectedDisclosures)
 		r.Error(err)
@@ -912,6 +964,24 @@ func createComplexClaims() map[string]interface{} {
 	return claims
 }
 
+func createComplexClaimsWithSlice() map[string]interface{} {
+	claims := map[string]interface{}{
+		"address": map[string]interface{}{
+			"locality":     "Schulpforta",
+			"region":       "Sachsen-Anhalt",
+			"countryCodes": []string{"UA", "PL"},
+			"cities":       []string{"Albuquerque", "El Paso"},
+			"extra": map[string]interface{}{
+				"recursive": map[string]interface{}{
+					"key1": "value1",
+				},
+			},
+		},
+	}
+
+	return claims
+}
+
 func verifyEd25519(jws string, pubKey ed25519.PublicKey) error {
 	v, err := afjwt.NewEd25519Verifier(pubKey)
 	if err != nil {
@@ -1075,7 +1145,8 @@ const sampleSDJWTV5Full = `
 		"degree": {
 			"degree": "MIT",
 			"type": "BachelorDegree",
-			"id": "some-id"
+			"id": "some-id",
+			"country": ["DE", "PL"]
 		},
 		"name": "Jayden Doe",
 		"id": "did:example:ebfeb1f712ebc6f1c276e12ec21",

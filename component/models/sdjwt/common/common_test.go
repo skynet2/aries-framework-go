@@ -47,11 +47,11 @@ func TestGetHash(t *testing.T) {
 
 func TestParseCombinedFormatForIssuance(t *testing.T) {
 	t.Run("success - SD-JWT only", func(t *testing.T) {
-		cfi := ParseCombinedFormatForIssuance(testCombinedFormatForIssuance)
+		cfi := ParseCombinedFormatForIssuance(testCombinedFormatForIssuanceV2)
 		require.Equal(t, testSDJWT, cfi.SDJWT)
 		require.Equal(t, 1, len(cfi.Disclosures))
 
-		require.Equal(t, testCombinedFormatForIssuance, cfi.Serialize())
+		require.Equal(t, testCombinedFormatForIssuanceV2, cfi.Serialize())
 	})
 	t.Run("success - spec example", func(t *testing.T) {
 		cfi := ParseCombinedFormatForIssuance(specCombinedFormatForIssuance)
@@ -71,7 +71,7 @@ func TestParseCombinedFormatForIssuance(t *testing.T) {
 func TestParseCombinedFormatForPresentation(t *testing.T) {
 	const testHolderBinding = "holder.binding.jwt"
 
-	testCombinedFormatForPresentation := testCombinedFormatForIssuance + CombinedFormatSeparator
+	testCombinedFormatForPresentation := testCombinedFormatForIssuanceV2 + CombinedFormatSeparator
 
 	t.Run("success - AFG example", func(t *testing.T) {
 		cfp := ParseCombinedFormatForPresentation(testCombinedFormatForPresentation)
@@ -141,7 +141,7 @@ func TestVerifyDisclosuresInSDJWT(t *testing.T) {
 	signer := afjwt.NewEd25519Signer(privKey)
 
 	t.Run("success", func(t *testing.T) {
-		sdJWT := ParseCombinedFormatForIssuance(testCombinedFormatForIssuance)
+		sdJWT := ParseCombinedFormatForIssuance(testCombinedFormatForIssuanceV2)
 		require.Equal(t, 1, len(sdJWT.Disclosures))
 
 		signedJWT, _, err := afjwt.Parse(sdJWT.SDJWT, afjwt.WithSignatureVerifier(&NoopSignatureVerifier{}))
@@ -189,7 +189,7 @@ func TestVerifyDisclosuresInSDJWT(t *testing.T) {
 	})
 
 	t.Run("error - disclosure not present in SD-JWT", func(t *testing.T) {
-		sdJWT := ParseCombinedFormatForIssuance(testCombinedFormatForIssuance)
+		sdJWT := ParseCombinedFormatForIssuance(testCombinedFormatForIssuanceV2)
 		require.Equal(t, 1, len(sdJWT.Disclosures))
 
 		signedJWT, _, err := afjwt.Parse(sdJWT.SDJWT, afjwt.WithSignatureVerifier(&NoopSignatureVerifier{}))
@@ -286,10 +286,10 @@ func TestGetDisclosureClaims(t *testing.T) {
 	r := require.New(t)
 
 	t.Run("success", func(t *testing.T) {
-		sdJWT := ParseCombinedFormatForIssuance(testCombinedFormatForIssuance)
+		sdJWT := ParseCombinedFormatForIssuance(testCombinedFormatForIssuanceV2)
 		require.Equal(t, 1, len(sdJWT.Disclosures))
 
-		disclosureClaims, err := GetDisclosureClaims(sdJWT.Disclosures, SDJWTVersionV2)
+		disclosureClaims, err := GetDisclosureClaims(sdJWT.Disclosures)
 		r.NoError(err)
 		r.Len(disclosureClaims, 1)
 
@@ -297,28 +297,44 @@ func TestGetDisclosureClaims(t *testing.T) {
 		r.Equal("John", disclosureClaims[0].Value)
 	})
 
+	t.Run("success SD JWT V5", func(t *testing.T) {
+		sdJWT := ParseCombinedFormatForIssuance(testCombinedFormatForIssuanceV5)
+		require.Equal(t, 6, len(sdJWT.Disclosures))
+
+		disclosureClaims, err := GetDisclosureClaims(sdJWT.Disclosures)
+		r.NoError(err)
+		r.Len(disclosureClaims, 6)
+
+		for _, disclosure := range disclosureClaims {
+			switch disclosure.Name {
+			case "locality":
+				r.Equal("Schulpforta", disclosure.Value)
+				r.Equal(DisclosureClaimTypePlainText, disclosure.Type)
+			case "key1":
+				r.Equal("value1", disclosure.Value)
+				r.Equal(DisclosureClaimTypePlainText, disclosure.Type)
+			case "recursive":
+				mappedValue, ok := disclosure.Value.(map[string]interface{})
+				r.True(ok)
+				sdSlice, ok := mappedValue["_sd"]
+				r.True(ok)
+				r.Len(sdSlice, 1)
+				r.Equal(DisclosureClaimTypeObject, disclosure.Type)
+			case "":
+				r.Contains([]string{"PL", "UA", "Albuquerque"}, disclosure.Value)
+				r.Equal(DisclosureClaimTypeArrayElement, disclosure.Type)
+			}
+		}
+	})
+
 	t.Run("error - invalid disclosure format (not encoded)", func(t *testing.T) {
 		sdJWT := ParseCombinedFormatForIssuance("jws~xyz")
 		require.Equal(t, 1, len(sdJWT.Disclosures))
 
-		disclosureClaims, err := GetDisclosureClaims(sdJWT.Disclosures, SDJWTVersionV2)
+		disclosureClaims, err := GetDisclosureClaims(sdJWT.Disclosures)
 		r.Error(err)
 		r.Nil(disclosureClaims)
 		r.Contains(err.Error(), "failed to unmarshal disclosure array")
-	})
-
-	t.Run("error - invalid disclosure array (not three parts)", func(t *testing.T) {
-		disclosureArr := []interface{}{"name", "value"}
-		disclosureJSON, err := json.Marshal(disclosureArr)
-		require.NoError(t, err)
-
-		sdJWT := ParseCombinedFormatForIssuance(fmt.Sprintf("jws~%s", base64.RawURLEncoding.EncodeToString(disclosureJSON)))
-		require.Equal(t, 1, len(sdJWT.Disclosures))
-
-		disclosureClaims, err := GetDisclosureClaims(sdJWT.Disclosures, SDJWTVersionV2)
-		r.Error(err)
-		r.Nil(disclosureClaims)
-		r.Contains(err.Error(), "disclosure array size[2] must be 3")
 	})
 
 	t.Run("error - invalid disclosure array (name is not a string)", func(t *testing.T) {
@@ -329,7 +345,7 @@ func TestGetDisclosureClaims(t *testing.T) {
 		sdJWT := ParseCombinedFormatForIssuance(fmt.Sprintf("jws~%s", base64.RawURLEncoding.EncodeToString(disclosureJSON)))
 		require.Equal(t, 1, len(sdJWT.Disclosures))
 
-		disclosureClaims, err := GetDisclosureClaims(sdJWT.Disclosures, SDJWTVersionV2)
+		disclosureClaims, err := GetDisclosureClaims(sdJWT.Disclosures)
 		r.Error(err)
 		r.Nil(disclosureClaims)
 		r.Contains(err.Error(), "disclosure name type[float64] must be string")
@@ -339,11 +355,11 @@ func TestGetDisclosureClaims(t *testing.T) {
 func TestGetDisclosedClaims(t *testing.T) {
 	r := require.New(t)
 
-	cfi := ParseCombinedFormatForIssuance(testCombinedFormatForIssuance)
+	cfi := ParseCombinedFormatForIssuance(testCombinedFormatForIssuanceV2)
 	r.Equal(testSDJWT, cfi.SDJWT)
 	r.Equal(1, len(cfi.Disclosures))
 
-	disclosureClaims, err := GetDisclosureClaims(cfi.Disclosures, SDJWTVersionV2)
+	disclosureClaims, err := GetDisclosureClaims(cfi.Disclosures)
 	r.NoError(err)
 
 	token, _, err := afjwt.Parse(cfi.SDJWT, afjwt.WithSignatureVerifier(&NoopSignatureVerifier{}))
@@ -756,7 +772,8 @@ func (sv *NoopSignatureVerifier) Verify(joseHeaders jose.Headers, payload, signi
 const additionalDisclosure = `WyJfMjZiYzRMVC1hYzZxMktJNmNCVzVlcyIsICJmYW1pbHlfbmFtZSIsICJNw7ZiaXVzIl0`
 
 // nolint: lll
-const testCombinedFormatForIssuance = `eyJhbGciOiJFZERTQSJ9.eyJfc2QiOlsicXF2Y3FuY3pBTWdZeDdFeWtJNnd3dHNweXZ5dks3OTBnZTdNQmJRLU51cyJdLCJfc2RfYWxnIjoic2hhLTI1NiIsImV4cCI6MTcwMzAyMzg1NSwiaWF0IjoxNjcxNDg3ODU1LCJpc3MiOiJodHRwczovL2V4YW1wbGUuY29tL2lzc3VlciIsIm5iZiI6MTY3MTQ4Nzg1NX0.vscuzfwcHGi04pWtJCadc4iDELug6NH6YK-qxhY1qacsciIHuoLELAfon1tGamHtuu8TSs6OjtLk3lHE16jqAQ~WyIzanFjYjY3ejl3a3MwOHp3aUs3RXlRIiwgImdpdmVuX25hbWUiLCAiSm9obiJd`
+const testCombinedFormatForIssuanceV2 = `eyJhbGciOiJFZERTQSJ9.eyJfc2QiOlsicXF2Y3FuY3pBTWdZeDdFeWtJNnd3dHNweXZ5dks3OTBnZTdNQmJRLU51cyJdLCJfc2RfYWxnIjoic2hhLTI1NiIsImV4cCI6MTcwMzAyMzg1NSwiaWF0IjoxNjcxNDg3ODU1LCJpc3MiOiJodHRwczovL2V4YW1wbGUuY29tL2lzc3VlciIsIm5iZiI6MTY3MTQ4Nzg1NX0.vscuzfwcHGi04pWtJCadc4iDELug6NH6YK-qxhY1qacsciIHuoLELAfon1tGamHtuu8TSs6OjtLk3lHE16jqAQ~WyIzanFjYjY3ejl3a3MwOHp3aUs3RXlRIiwgImdpdmVuX25hbWUiLCAiSm9obiJd`
+const testCombinedFormatForIssuanceV5 = `eyJhbGciOiJFZERTQSJ9.eyJfc2RfYWxnIjoic2hhLTI1NiIsImFkZHJlc3MiOnsiX3NkIjpbIjN0SlpYSTVBbE9XWEZvLTlfS29nMC04aFFqTjV3dEJMdkllSUk0Zkc4aDQiXSwiY2l0aWVzIjpbeyIuLi4iOiJ1Y2pIR2ZMWHI0bmRKa0Z2dENEdDZ2S3RxVGZVS3ZtZVNHZVB1TFZXdjRnIn0sIkVsIFBhc28iXSwiY291bnRyeUNvZGVzIjpbeyIuLi4iOiJEZmR4NGtsMlFZZ0xCcVZIYy1QYnFUbl8wbDhaejlkZXJNQUgxWF9JUWpBIn0seyIuLi4iOiJBRW5KV1pWeS02R1pMRGhpV3ZURnRPc1JXbDJNd05XYno3STdmTV9HWTZ3In1dLCJleHRyYSI6eyJfc2QiOlsiaVlBMkpGUjhFMGs3MC0wV3VxWmhvekg3QkEyYzVpOVkyYmlLWVY5VU9zayJdfSwicmVnaW9uIjoiU2FjaHNlbi1BbmhhbHQifSwiaXNzIjoiaHR0cHM6Ly9leGFtcGxlLmNvbS9pc3N1ZXIifQ.aq_ZNKbwB7OksGRwou8lqyMeLhz6Rmygarf9mHpir0nZaACFES3MCnjTelDpY4a85oJQ5Kxit8F2R9aioeUkBg~WyI1ZHNIZlk4UTNLbVdKNWozS0RnVG1BIiwibG9jYWxpdHkiLCJTY2h1bHBmb3J0YSJd~WyJhb2pLZVRCYVZqRHVlbzlqeGZ5UG1nIiwiVUEiXQ~WyI0UVJMWXh6ZUFQXzVQdlRfZkN6X09RIiwiUEwiXQ~WyJ5MWhPekdWQWlfOGQyM3RCX2JLa0dnIiwiQWxidXF1ZXJxdWUiXQ~WyJZeG41UWwzSHJZSlpSSDRtZ1V2bzZnIiwicmVjdXJzaXZlIix7Il9zZCI6WyJ0ODhZV3hYSFFlQUFYUDFPcnE4dkFyaHVSOTk4R2gyUElnOWNYNVFReFZvIl19XQ~WyI0X1RDT0Uzc0VKM2xHekpkYS16RXZRIiwia2V5MSIsInZhbHVlMSJd`
 
 // nolint: lll
 const testSDJWT = `eyJhbGciOiJFZERTQSJ9.eyJfc2QiOlsicXF2Y3FuY3pBTWdZeDdFeWtJNnd3dHNweXZ5dks3OTBnZTdNQmJRLU51cyJdLCJfc2RfYWxnIjoic2hhLTI1NiIsImV4cCI6MTcwMzAyMzg1NSwiaWF0IjoxNjcxNDg3ODU1LCJpc3MiOiJodHRwczovL2V4YW1wbGUuY29tL2lzc3VlciIsIm5iZiI6MTY3MTQ4Nzg1NX0.vscuzfwcHGi04pWtJCadc4iDELug6NH6YK-qxhY1qacsciIHuoLELAfon1tGamHtuu8TSs6OjtLk3lHE16jqAQ`
@@ -839,7 +856,7 @@ func TestExtractSDJWTVersion(t *testing.T) {
 					"typ": "JWT",
 				},
 			},
-			want: 2,
+			want: SDJWTVersionV2,
 		},
 		{
 			name: "V2 default",
@@ -847,7 +864,7 @@ func TestExtractSDJWTVersion(t *testing.T) {
 				isSDJWT:     true,
 				joseHeaders: map[string]interface{}{},
 			},
-			want: 2,
+			want: SDJWTVersionV2,
 		},
 		{
 			name: "V5",
@@ -857,7 +874,7 @@ func TestExtractSDJWTVersion(t *testing.T) {
 					"typ": "vc+sd-jwt",
 				},
 			},
-			want: 5,
+			want: SDJWTVersionV5,
 		},
 	}
 	for _, tt := range tests {

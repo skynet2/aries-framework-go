@@ -9,6 +9,7 @@ package common
 import (
 	"crypto"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -93,6 +94,10 @@ const (
 	DisclosureClaimTypeArrayElement = DisclosureClaimType(1)
 	// DisclosureClaimTypeArray array.
 	DisclosureClaimTypeArray = DisclosureClaimType(2)
+	// DisclosureClaimTypeObject object.
+	DisclosureClaimTypeObject = DisclosureClaimType(3)
+	// DisclosureClaimTypePlainText plain text.
+	DisclosureClaimTypePlainText = DisclosureClaimType(4)
 )
 
 // DisclosureClaim defines claim.
@@ -107,11 +112,77 @@ type DisclosureClaim struct {
 // GetDisclosureClaims de-codes disclosures.
 func GetDisclosureClaims(
 	disclosures []string,
-	version SDJWTVersion,
 ) ([]*DisclosureClaim, error) {
-	instance := newCommon(version)
+	claims := make([]*DisclosureClaim, 0, len(disclosures))
 
-	return instance.GetDisclosureClaims(disclosures)
+	for _, disclosure := range disclosures {
+		claim, err := getDisclosureClaim(disclosure)
+		if err != nil {
+			return nil, err
+		}
+
+		claims = append(claims, claim)
+	}
+
+	return claims, nil
+}
+
+func getDisclosureClaim(disclosure string) (*DisclosureClaim, error) {
+	decoded, err := base64.RawURLEncoding.DecodeString(disclosure)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode disclosure: %w", err)
+	}
+
+	var disclosureArr []interface{}
+
+	err = json.Unmarshal(decoded, &disclosureArr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal disclosure array: %w", err)
+	}
+
+	if len(disclosureArr) < 2 {
+		return nil, fmt.Errorf("disclosure array size[%d] must be greater %d", len(disclosureArr),
+			2)
+	}
+
+	salt, ok := disclosureArr[0].(string)
+	if !ok {
+		return nil, fmt.Errorf("disclosure salt type[%T] must be string", disclosureArr[0])
+	}
+
+	claim := &DisclosureClaim{
+		Disclosure: disclosure,
+		Salt:       salt,
+	}
+
+	claim.Salt = salt
+
+	switch len(disclosureArr) {
+	// array element
+	case 2:
+		claim.Value = disclosureArr[1]
+		claim.Type = DisclosureClaimTypeArrayElement
+
+	case 3:
+		// regular object
+		name, ok := disclosureArr[1].(string)
+		if !ok {
+			return nil, fmt.Errorf("disclosure name type[%T] must be string", disclosureArr[1])
+		}
+		claim.Name = name
+		claim.Value = disclosureArr[2]
+
+		switch disclosureArr[2].(type) {
+		case map[string]interface{}:
+			claim.Type = DisclosureClaimTypeObject
+		default:
+			claim.Type = DisclosureClaimTypePlainText
+		}
+	default:
+		return nil, fmt.Errorf("unexpected disclosure claims amount")
+	}
+
+	return claim, nil
 }
 
 // ParseCombinedFormatForIssuance parses combined format for issuance into CombinedFormatForIssuance parts.
@@ -471,10 +542,9 @@ func ExtractSDJWTVersion(isSDJWT bool, joseHeaders jose.Headers) SDJWTVersion {
 
 	typ, _ := joseHeaders.Type()
 
-	switch typ {
-	case "vc+sd-jwt":
+	if strings.HasSuffix(typ, "+sd-jwt") {
 		return SDJWTVersionV5
-	default:
-		return SDJWTVersionDefault
 	}
+
+	return SDJWTVersionDefault
 }
