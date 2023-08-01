@@ -166,7 +166,7 @@ func Parse(combinedFormatForPresentation string, opts ...ParseOpt) (map[string]i
 	sdJWTVersion := common.ExtractSDJWTVersion(true, signedJWT.Headers)
 
 	// Verify that all disclosures are present in SD-JWT.
-	err = common.VerifyDisclosuresInSDJWT(cfp.Disclosures, signedJWT, sdJWTVersion)
+	err = common.VerifyDisclosuresInSDJWT(cfp.Disclosures, signedJWT)
 	if err != nil {
 		return nil, err
 	}

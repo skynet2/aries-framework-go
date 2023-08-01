@@ -839,7 +839,7 @@ func ParseCredential(vcData []byte, opts ...CredentialOpt) (*Credential, error) 
 		isSDJWTVC := disclosures != nil
 		sdJWTVersion = common.ExtractSDJWTVersion(isSDJWTVC, joseHeaders)
 
-		if err = validateDisclosures(vcDataDecoded, disclosures, sdJWTVersion); err != nil {
+		if err = validateDisclosures(vcDataDecoded, disclosures); err != nil {
 			return nil, err
 		}
 
@@ -871,7 +871,7 @@ func ParseCredential(vcData []byte, opts ...CredentialOpt) (*Credential, error) 
 	return vc, nil
 }
 
-func validateDisclosures(vcBytes []byte, disclosures []string, sdjwtVersion common.SDJWTVersion) error {
+func validateDisclosures(vcBytes []byte, disclosures []string) error {
 	if len(disclosures) == 0 {
 		return nil
 	}
@@ -890,7 +890,7 @@ func validateDisclosures(vcBytes []byte, disclosures []string, sdjwtVersion comm
 		}
 	}
 
-	err = common.VerifyDisclosuresInSDJWT(disclosures, vcPayload, sdjwtVersion)
+	err = common.VerifyDisclosuresInSDJWT(disclosures, vcPayload)
 	if err != nil {
 		return fmt.Errorf("invalid SDJWT disclosures: %w", err)
 	}
@@ -1127,7 +1127,7 @@ func parseDisclosures(disclosures []string, version common.SDJWTVersion) ([]*com
 		return nil, nil
 	}
 
-	disc, err := common.GetDisclosureClaims(disclosures, version)
+	disc, err := common.GetDisclosureClaims(disclosures)
 	if err != nil {
 		return nil, fmt.Errorf("parsing disclosures from SD-JWT credential: %w", err)
 	}
