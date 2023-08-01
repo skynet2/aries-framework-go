@@ -109,6 +109,7 @@ type DisclosureClaim struct {
 }
 
 // GetDisclosureClaims de-codes disclosures.
+// For SDJWT V5, some of disclosures may contain nexted digests.
 func GetDisclosureClaims(
 	disclosures []string,
 ) ([]*DisclosureClaim, error) {
