@@ -161,9 +161,8 @@ func getSignatureVerifierFromCNF(cnf map[string]interface{}) (jose.SignatureVeri
 func getDisclosedClaims(
 	disclosures []string,
 	signedJWT *afgjwt.JSONWebToken,
-	version common.SDJWTVersion,
 ) (map[string]interface{}, error) {
-	disclosureClaims, err := common.GetDisclosureClaims(disclosures, version)
+	disclosureClaims, err := common.GetDisclosureClaims(disclosures)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get verified payload: %w", err)
 	}

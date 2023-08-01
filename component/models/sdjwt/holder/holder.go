@@ -115,14 +115,13 @@ func Parse(combinedFormatForIssuance string, opts ...ParseOpt) ([]*Claim, error)
 		return nil, err
 	}
 
-	return getClaims(cfi.Disclosures, sdJWTVersion)
+	return getClaims(cfi.Disclosures)
 }
 
 func getClaims(
 	disclosures []string,
-	version common.SDJWTVersion,
 ) ([]*Claim, error) {
-	disclosureClaims, err := common.GetDisclosureClaims(disclosures, version)
+	disclosureClaims, err := common.GetDisclosureClaims(disclosures)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get claims from disclosures: %w", err)
 	}
