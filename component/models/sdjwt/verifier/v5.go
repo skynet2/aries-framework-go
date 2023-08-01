@@ -36,7 +36,7 @@ func parseV5(
 		return nil, fmt.Errorf("failed to verify key binding: %w", err)
 	}
 
-	return getDisclosedClaims(cfp.Disclosures, signedJWT, common.SDJWTVersionV5)
+	return getDisclosedClaims(cfp.Disclosures, signedJWT)
 }
 
 func verifyKeyBinding(sdJWT *afgjwt.JSONWebToken, keyBinding string, pOpts *parseOpts) error {
