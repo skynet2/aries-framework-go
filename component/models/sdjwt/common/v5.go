@@ -152,16 +152,11 @@ func processObj(
 
 			elementStr := fmt.Sprint(elementDigest)
 			if !slices.Contains(recData.foundSDs, elementStr) {
-				return nil, fmt.Errorf("digest %v already in use", elementStr)
+				recData.foundSDs = append(recData.foundSDs, elementStr)
 			}
-			recData.foundSDs = append(recData.foundSDs, elementStr)
-
 			cl, ok := recData.claimMap[elementStr]
 			if !ok {
-				if !recData.skipMissingDisclosures {
-					newValues = append(newValues, element)
-				}
-
+				newValues = append(newValues, element)
 				continue
 			}
 
@@ -197,9 +192,8 @@ func processObj(
 			for _, sdElement := range sdArr {
 				elementStr := fmt.Sprint(sdElement)
 				if !slices.Contains(recData.foundSDs, elementStr) {
-					return nil, fmt.Errorf("digest %v already in use", elementStr)
+					recData.foundSDs = append(recData.foundSDs, elementStr)
 				}
-				recData.foundSDs = append(recData.foundSDs, elementStr)
 
 				cl, clOk := recData.claimMap[elementStr]
 				if !clOk {
@@ -218,8 +212,7 @@ func processObj(
 
 			if recData.modifyValues {
 				delete(obj, SDKey)
-				delete(obj, SDAlgorithmKey)
-				if len(missingSDs) > 0 && !recData.skipMissingDisclosures {
+				if len(missingSDs) > 0 {
 					obj[SDKey] = missingSDs
 				}
 			}
